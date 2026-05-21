@@ -64,4 +64,11 @@
     <string name="capsule_state_no_model">Download the Whisper model</string>
     <string name="capsule_state_no_permission">Tap to grant microphone</string>
     <string name="capsule_state_error">Something went wrong</string>
+
+    <!-- How to use -->
+    <string name="setup_how_to_use_title">How to use</string>
+    <string name="setup_how_to_use_body">Once setup is complete, tap any text field in another app, long-press your keyboard switcher and pick Sussurro. Tap the capsule to start listening, speak, then tap again to insert what you said.</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_close">Close</string>
 </resources>

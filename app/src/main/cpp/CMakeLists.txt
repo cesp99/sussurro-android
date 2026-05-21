@@ -84,6 +84,16 @@ target_include_directories(sussurro-whisper PRIVATE
 # `cpufeatures` at build time). Our manual -march=armv8.2-a+fp16 was correlated
 # with zero-segment transcripts on multiple Snapdragon devices.
 
+# 16 KB page-size compatibility (required for Google Play uploads targeting
+# Android 15+ from 2025-11-01). NDK 27 still defaults LOAD segments to 4 KB
+# alignment; NDK 28 would do this for us, but we're pinned to 27.2 because 28
+# produced zero-segment whisper output. Apply the flag in both Debug and
+# Release builds so `app-debug.apk` is also conformant.
+target_link_options(sussurro-whisper PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)
+
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(sussurro-whisper PRIVATE
         -O3

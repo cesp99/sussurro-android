@@ -121,6 +121,8 @@ private fun SussurroApp(
             imeEnabled = imeEnabled,
             imeSelected = imeSelected,
             downloader = downloader,
+            settings = settings,
+            store = store,
             onPermissionResult = { granted -> permissionGranted = granted },
             onOpenSettings = { onboardingComplete = true },
             onModelStateChanged = refreshModelInstalled,

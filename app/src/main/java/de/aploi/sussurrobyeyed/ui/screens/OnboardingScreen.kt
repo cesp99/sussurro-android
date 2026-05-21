@@ -36,6 +36,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -51,7 +53,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.aploi.sussurrobyeyed.R
+import de.aploi.sussurrobyeyed.data.Settings
+import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.model.ModelDownloader
+import de.aploi.sussurrobyeyed.ui.components.LanguagePicker
+import de.aploi.sussurrobyeyed.ui.components.SectionCard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,11 +79,14 @@ internal fun OnboardingScreen(
     imeEnabled: Boolean,
     imeSelected: Boolean,
     downloader: ModelDownloader,
+    settings: Settings,
+    store: SettingsStore,
     onPermissionResult: (Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     onModelStateChanged: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -173,6 +182,31 @@ internal fun OnboardingScreen(
                         }
                     }
                 }
+            }
+
+            // Language: optional, but offered up-front so the user doesn't have
+            // to hunt for it in settings to dictate in their own language.
+            SectionCard(
+                title = stringResource(R.string.settings_section_language),
+                icon = { Icon(Icons.Filled.Language, contentDescription = null) },
+            ) {
+                LanguagePicker(
+                    currentCode = settings.language,
+                    onSelect = { scope.launch { store.setLanguage(it) } },
+                )
+            }
+
+            // How to use: a short paragraph so the empty space below the setup
+            // steps actually tells the user what to do once everything is green.
+            SectionCard(
+                title = stringResource(R.string.setup_how_to_use_title),
+                icon = { Icon(Icons.Outlined.Lightbulb, contentDescription = null) },
+            ) {
+                Text(
+                    text = stringResource(R.string.setup_how_to_use_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (permissionGranted && modelInstalled && imeEnabled && imeSelected) {

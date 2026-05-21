@@ -2,7 +2,6 @@ package de.aploi.sussurrobyeyed.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brightness6
@@ -19,12 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,9 +48,10 @@ import de.aploi.sussurrobyeyed.R
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.data.ThemeMode
-import de.aploi.sussurrobyeyed.data.WhisperLanguages
 import de.aploi.sussurrobyeyed.model.ModelDownloader
 import de.aploi.sussurrobyeyed.model.WhisperModel
+import de.aploi.sussurrobyeyed.ui.components.LanguagePicker
+import de.aploi.sussurrobyeyed.ui.components.SectionCard
 import de.aploi.sussurrobyeyed.whisper.WhisperLib
 import kotlinx.coroutines.launch
 
@@ -172,41 +166,6 @@ internal fun SettingsScreen(
 }
 
 @Composable
-private fun SectionCard(
-    title: String,
-    icon: (@Composable () -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (icon != null) icon()
-                    Text(
-                        text = title.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                content()
-            },
-        )
-    }
-}
-
-@Composable
 private fun SpeechRow(
     modelInstalled: Boolean,
     onDownloadNow: () -> Unit,
@@ -264,50 +223,6 @@ private fun SpeechRow(
             title = { Text(stringResource(R.string.step_model_delete)) },
             text = { Text("Sussurro will need to re-download the model the next time you use it.") },
         )
-    }
-}
-
-@Composable
-private fun LanguagePicker(
-    currentCode: String,
-    onSelect: (String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val currentName = WhisperLanguages.nameFor(currentCode)
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.settings_language_label),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = stringResource(R.string.settings_language_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        FilledTonalButton(onClick = { expanded = true }) {
-            Text(currentName)
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            WhisperLanguages.all.forEach { lang ->
-                DropdownMenuItem(
-                    text = { Text(lang.name) },
-                    onClick = {
-                        onSelect(lang.code)
-                        expanded = false
-                    },
-                )
-            }
-        }
     }
 }
 
