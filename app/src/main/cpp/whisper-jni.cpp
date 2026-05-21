@@ -105,17 +105,21 @@ Java_de_aploi_sussurrobyeyed_whisper_WhisperLib_nativeTranscribe(
     params.no_context       = true;
     params.single_segment   = false;
 
-    // Language: empty / "auto" => detect; otherwise use the supplied code.
+    // Language: empty / "auto" => let whisper.cpp pick (it runs language
+    // detection internally when params.language is null/empty and then
+    // continues with transcription). We must NEVER set detect_language=true
+    // here: with that flag whisper_full returns 0 immediately after detection
+    // *without* decoding any segments, which looks exactly like a silent
+    // transcript and was the original "model not transcribing" bug.
     const char* langChars = (lang != nullptr) ? env->GetStringUTFChars(lang, nullptr) : nullptr;
     std::string langOwned;
     if (langChars != nullptr && langChars[0] != '\0' && std::string(langChars) != "auto") {
         langOwned = langChars;
         params.language = langOwned.c_str();
-        params.detect_language = false;
     } else {
         params.language = nullptr;
-        params.detect_language = true;
     }
+    params.detect_language = false;
 
     // Quick audio sanity check: peak amplitude and crude RMS. If the buffer is
     // ~silent Whisper will just return blank, which looks like a bug.
