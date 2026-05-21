@@ -1,0 +1,67 @@
+<resources>
+    <string name="app_name">Sussurro by Eyed</string>
+    <string name="ime_label">Sussurro Voice Keyboard</string>
+    <string name="ime_subtype_label">Sussurro</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Sussurro</string>
+    <string name="setup_subtitle">by Eyed</string>
+    <string name="setup_tagline">A silent keyboard. Just whisper.</string>
+
+    <string name="step_permission_title">Microphone permission</string>
+    <string name="step_permission_desc">Sussurro needs the microphone to hear your voice. Audio never leaves your phone.</string>
+    <string name="step_permission_button">Grant permission</string>
+    <string name="step_permission_granted">Permission granted</string>
+
+    <string name="step_model_title">Whisper model</string>
+    <string name="step_model_desc_idle">Download the Whisper Small model (~488 MB). One-time. After this Sussurro is fully offline.</string>
+    <string name="step_model_desc_downloading">Downloading model…</string>
+    <string name="step_model_desc_ready">Whisper Small is installed.</string>
+    <string name="step_model_download">Download</string>
+    <string name="step_model_redownload">Re-download</string>
+    <string name="step_model_delete">Delete model</string>
+    <string name="step_model_cancel">Cancel</string>
+
+    <string name="step_enable_title">Enable keyboard</string>
+    <string name="step_enable_desc">Add Sussurro in system settings, then select it as your active input method.</string>
+    <string name="step_enable_enable">Enable in system settings</string>
+    <string name="step_enable_choose">Choose Sussurro</string>
+    <string name="step_enable_enabled">Sussurro is enabled</string>
+    <string name="step_enable_selected">Sussurro is your active keyboard</string>
+
+    <!-- Settings sections -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_speech">Speech Recognition (Whisper)</string>
+    <string name="settings_section_language">Transcription Language</string>
+    <string name="settings_section_output">Output</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_about">About</string>
+
+    <string name="settings_language_label">Language</string>
+    <string name="settings_language_desc">Language Whisper listens for</string>
+    <string name="settings_language_auto">Auto detect</string>
+
+    <string name="settings_lowercase_label">Lowercase output</string>
+    <string name="settings_lowercase_desc">Force all transcribed text to lowercase</string>
+
+    <string name="settings_trim_label">Trim trailing punctuation</string>
+    <string name="settings_trim_desc">Remove final punctuation from transcripts</string>
+
+    <string name="settings_theme_label">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+
+    <string name="about_app_name">Sussurro</string>
+    <string name="about_app_by">by Eyed</string>
+    <string name="about_app_version">Version %1$s</string>
+    <string name="about_app_description">A voice-only keyboard. 100%% local Whisper inference on your phone. No network after the model is downloaded.</string>
+
+    <!-- Capsule states -->
+    <string name="capsule_state_idle">Idle</string>
+    <string name="capsule_state_recording">Listening</string>
+    <string name="capsule_state_transcribing">Transcribing</string>
+    <string name="capsule_state_no_model">Download the Whisper model</string>
+    <string name="capsule_state_no_permission">Tap to grant microphone</string>
+    <string name="capsule_state_error">Something went wrong</string>
+</resources>
