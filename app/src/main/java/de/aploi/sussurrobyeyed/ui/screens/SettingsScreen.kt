@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,10 +51,13 @@ import de.aploi.sussurrobyeyed.R
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.data.ThemeMode
+import de.aploi.sussurrobyeyed.inject.TextInjector
 import de.aploi.sussurrobyeyed.model.ModelDownloader
 import de.aploi.sussurrobyeyed.model.WhisperModel
 import de.aploi.sussurrobyeyed.ui.components.LanguagePicker
 import de.aploi.sussurrobyeyed.ui.components.SectionCard
+import de.aploi.sussurrobyeyed.wear.LastWatchTranscript
+import de.aploi.sussurrobyeyed.wear.WatchPresence
 import de.aploi.sussurrobyeyed.whisper.WhisperLib
 import kotlinx.coroutines.launch
 
@@ -155,6 +161,17 @@ internal fun SettingsScreen(
                 )
             }
 
+            // Watch companion: pairing + accessibility-fallback status, and
+            // the most recent transcript so the user can confirm what their
+            // last watch dictation became. All read-only — config lives in
+            // system settings and onboarding.
+            SectionCard(
+                title = stringResource(R.string.settings_section_watch),
+                icon = { Icon(Icons.Filled.Watch, contentDescription = null) },
+            ) {
+                WatchCompanionStatus()
+            }
+
             // About
             SectionCard(title = stringResource(R.string.settings_section_about)) {
                 AboutBlock()
@@ -162,6 +179,62 @@ internal fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun WatchCompanionStatus() {
+    val context = LocalContext.current
+    val lastTranscript by LastWatchTranscript.value.collectAsState()
+
+    // Capability lookup runs in the background; null = pending. We
+    // intentionally don't re-poll on every recomposition; recomposing the
+    // settings screen (e.g. toggling a theme) shouldn't churn the BT layer.
+    var reachable by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) {
+        reachable = WatchPresence.isWatchReachable(context)
+    }
+    val accessibilityEnabled = remember { TextInjector.isAccessibilityEnabled(context) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        StatusRow(
+            label = stringResource(R.string.settings_watch_status_label),
+            value = when (reachable) {
+                null -> "…"
+                true -> stringResource(R.string.settings_watch_status_paired)
+                false -> stringResource(R.string.settings_watch_status_unpaired)
+            },
+        )
+        HorizontalDivider()
+        StatusRow(
+            label = stringResource(R.string.settings_watch_a11y_label),
+            value = if (accessibilityEnabled) {
+                stringResource(R.string.settings_watch_a11y_on)
+            } else {
+                stringResource(R.string.settings_watch_a11y_off)
+            },
+        )
+        HorizontalDivider()
+        StatusRow(
+            label = stringResource(R.string.settings_watch_last_transcript_label),
+            value = lastTranscript ?: stringResource(R.string.settings_watch_last_transcript_empty),
+        )
+    }
+}
+
+@Composable
+private fun StatusRow(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

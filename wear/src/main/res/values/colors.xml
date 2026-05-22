@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="watch_glow">#FFFFFFFF</color>
+    <color name="watch_glow_blue">#FF8AB4FF</color>
+</resources>

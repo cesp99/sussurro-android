@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,12 +56,13 @@ import androidx.compose.ui.unit.dp
 import de.aploi.sussurrobyeyed.R
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
+import de.aploi.sussurrobyeyed.inject.TextInjector
 import de.aploi.sussurrobyeyed.model.ModelDownloader
 import de.aploi.sussurrobyeyed.ui.components.LanguagePicker
 import de.aploi.sussurrobyeyed.ui.components.SectionCard
+import de.aploi.sussurrobyeyed.wear.WatchPresence
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -78,6 +80,7 @@ internal fun OnboardingScreen(
     modelInstalled: Boolean,
     imeEnabled: Boolean,
     imeSelected: Boolean,
+    accessibilityEnabled: Boolean,
     downloader: ModelDownloader,
     settings: Settings,
     store: SettingsStore,
@@ -183,6 +186,22 @@ internal fun OnboardingScreen(
                     }
                 }
             }
+
+            // Optional Step 4: Accessibility service. Unlocks the "inject
+            // dictation anywhere" path for when Sussurro IS NOT the
+            // selected keyboard (e.g. watch dictation into a webview that's
+            // currently using Gboard). Optional — the rest of the app still
+            // works without it.
+            AccessibilityCard(
+                completed = accessibilityEnabled,
+                onEnableClicked = { openAccessibilitySettings(context) },
+            )
+
+            // Optional Step 5: Watch companion. Pure status indicator —
+            // installation of the watch APK is sideloaded for now, so we
+            // don't try to deep-link into Play Store. The card just
+            // reassures the user when a paired watch is detected.
+            WatchCompanionCard()
 
             // Language: optional, but offered up-front so the user doesn't have
             // to hunt for it in settings to dictate in their own language.
@@ -303,7 +322,10 @@ private fun ModelStepCard(
 ) {
     val scope = rememberCoroutineScope()
     val progress = remember { MutableStateFlow<ModelDownloader.Progress>(ModelDownloader.Progress.Idle) }
-    val state by progress.asStateFlow().collectAsState()
+    // Compose lint (`FlowOperatorInvokedInComposition`) flags calling a flow
+    // operator inside a composable; collect the MutableStateFlow directly
+    // since it already conforms to StateFlow.
+    val state by progress.collectAsState()
 
     var downloadJob: Job? by remember { mutableStateOf(null) }
 
@@ -393,7 +415,156 @@ private fun openIMESettings(context: Context) {
     context.startActivity(intent)
 }
 
+private fun openAccessibilitySettings(context: Context) {
+    val intent = Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
+}
+
 private fun showInputMethodPicker(context: Context) {
     val imm = context.getSystemService(InputMethodManager::class.java)
     imm?.showInputMethodPicker()
+}
+
+@Composable
+private fun AccessibilityCard(
+    completed: Boolean,
+    onEnableClicked: () -> Unit,
+) {
+    val description = if (completed) {
+        stringResource(R.string.step_a11y_enabled)
+    } else {
+        stringResource(R.string.step_a11y_desc)
+    }
+    OptionalCard(
+        title = stringResource(R.string.step_a11y_title),
+        description = description,
+        completed = completed,
+    ) {
+        if (!completed) {
+            OutlinedButton(onClick = onEnableClicked) {
+                Text(stringResource(R.string.step_a11y_enable))
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchCompanionCard() {
+    val context = LocalContext.current
+    // null = still loading, true = paired, false = no watch detected.
+    var reachable by remember { mutableStateOf<Boolean?>(null) }
+
+    // Capability lookups are network-y enough on cold start that a brief
+    // "Loading…" beats showing "No watch detected" while we wait.
+    LaunchedEffect(Unit) {
+        reachable = WatchPresence.isWatchReachable(context)
+    }
+
+    val description = when (reachable) {
+        null -> stringResource(R.string.step_watch_desc)
+        true -> stringResource(R.string.step_watch_status_connected)
+        false -> {
+            // Show both the marketing blurb AND the negative status, so
+            // a user who hasn't installed yet still understands what
+            // this card is for.
+            stringResource(R.string.step_watch_desc) +
+                "\n\n" +
+                stringResource(R.string.step_watch_status_unknown)
+        }
+    }
+    OptionalCard(
+        title = stringResource(R.string.step_watch_title),
+        description = description,
+        completed = reachable == true,
+    ) {
+        // No action button: the watch APK is sideloaded today; once
+        // there's a Play Store listing we can hang a deep-link off this
+        // slot.
+    }
+}
+
+/**
+ * Card variant for optional onboarding steps — same visuals as
+ * [OnboardingCard] but without a step number badge. We render a check
+ * mark when `completed` and a soft outline circle when not, so the
+ * card still reads as part of the same flow without making the user
+ * feel they're behind on a required step.
+ */
+@Composable
+private fun OptionalCard(
+    title: String,
+    description: String,
+    completed: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val containerColor =
+        if (completed) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainerHigh
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OptionalBadge(completed = completed)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun OptionalBadge(completed: Boolean) {
+    Surface(
+        modifier = Modifier.size(28.dp),
+        shape = CircleShape,
+        color = if (completed) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        contentColor = if (completed) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    ) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (completed) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            // When not completed we leave the badge empty — these are
+            // optional steps, not numbered ones, so we don't want to
+            // imply an ordering the way the main StepBadge does.
+        }
+    }
 }

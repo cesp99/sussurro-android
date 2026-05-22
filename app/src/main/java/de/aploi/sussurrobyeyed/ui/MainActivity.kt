@@ -27,6 +27,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.data.ThemeMode
+import de.aploi.sussurrobyeyed.inject.TextInjector
 import de.aploi.sussurrobyeyed.model.ModelDownloader
 import de.aploi.sussurrobyeyed.ui.screens.OnboardingScreen
 import de.aploi.sussurrobyeyed.ui.screens.SettingsScreen
@@ -93,6 +94,11 @@ private fun SussurroApp(
     var modelInstalled by remember { mutableStateOf(downloader.isInstalled()) }
     var imeEnabled by remember { mutableStateOf(isImeEnabled(context)) }
     var imeSelected by remember { mutableStateOf(isImeSelected(context)) }
+    // Accessibility is optional — it powers the "inject into any focused
+    // field" path used by the watch companion when Sussurro isn't the
+    // active keyboard. Tracked here so the onboarding card can refresh
+    // when the user comes back from system settings.
+    var accessibilityEnabled by remember { mutableStateOf(TextInjector.isAccessibilityEnabled(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         permissionGranted = ContextCompat.checkSelfPermission(
@@ -102,8 +108,12 @@ private fun SussurroApp(
         modelInstalled = downloader.isInstalled()
         imeEnabled = isImeEnabled(context)
         imeSelected = isImeSelected(context)
+        accessibilityEnabled = TextInjector.isAccessibilityEnabled(context)
     }
 
+    // Optional steps (accessibility, watch companion) deliberately stay
+    // out of `allReady` — the user can ship without them and we don't
+    // want to keep them stuck in onboarding for hardware they don't own.
     val allReady = permissionGranted && modelInstalled && imeEnabled && imeSelected
     // `onboardingComplete` is sticky — once the user has finished onboarding
     // we don't yank them back if e.g. they later revoke the IME selection.
@@ -120,6 +130,7 @@ private fun SussurroApp(
             modelInstalled = modelInstalled,
             imeEnabled = imeEnabled,
             imeSelected = imeSelected,
+            accessibilityEnabled = accessibilityEnabled,
             downloader = downloader,
             settings = settings,
             store = store,

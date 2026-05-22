@@ -52,6 +52,13 @@ import kotlinx.coroutines.runBlocking
  * [SavedStateRegistryOwner] because [ComposeView] requires these owners to be
  * present on its view tree, and an [InputMethodService] is not a
  * [androidx.activity.ComponentActivity].
+ *
+ * In addition to its own UI, the IME also exposes [tryCommitFromExternal] for
+ * the watch session pipeline: when the user dictates from their watch and
+ * Sussurro IME happens to be the active keyboard, the WatchSessionService
+ * routes the transcript through the IME's existing input connection rather
+ * than going around it via accessibility, so undo and autocorrect work the
+ * way the user expects.
  */
 class SussurroIme : InputMethodService(),
     LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -110,6 +117,11 @@ class SussurroIme : InputMethodService(),
             dir.mkdirs()
             recorder.debugWavDir = dir
         }
+
+        // Register ourselves as the live IME instance so the watch pipeline
+        // can route transcripts through the host text field's input
+        // connection when the user has Sussurro selected.
+        liveImeRef = this
     }
 
     override fun onCreateInputView(): View {
@@ -188,11 +200,36 @@ class SussurroIme : InputMethodService(),
             engine = null
         }
         serviceScope.cancel()
+        if (liveImeRef === this) liveImeRef = null
         // Let the framework finish its teardown (which calls onFinishInputView)
         // before we mark the lifecycle DESTROYED; otherwise the back-transition
         // crashes.
         super.onDestroy()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+    }
+
+    /**
+     * Commit [text] into the currently bound input field via the IME's
+     * standard `InputConnection`. Public hook used by the watch session
+     * pipeline; mirrors [commit] but takes a settings-applied string
+     * directly instead of running it through Whisper post-processing
+     * twice.
+     *
+     * @return true if the host accepted the commit. False when there's no
+     *   input connection (e.g. the keyboard isn't visible / nothing
+     *   focused).
+     */
+    fun commitFromExternal(text: String): Boolean {
+        if (text.isEmpty()) return false
+        val processed = postProcess(text, settingsFlow.value)
+        if (processed.isEmpty()) return false
+        val ic = currentInputConnection ?: run {
+            Log.w(TAG, "commitFromExternal: no input connection")
+            return false
+        }
+        val ok = ic.commitText(processed, 1)
+        Log.i(TAG, "commitFromExternal len=${processed.length} ok=$ok")
+        return ok
     }
 
     /**
@@ -343,5 +380,28 @@ class SussurroIme : InputMethodService(),
 
     companion object {
         private const val TAG = "SussurroIme"
+
+        /**
+         * Volatile pointer to the live IME instance, populated in [onCreate]
+         * and cleared in [onDestroy]. The framework only ever runs at most
+         * one [SussurroIme] at a time so a singleton ref is safe.
+         *
+         * Public accessor goes through [tryCommitFromExternal] so external
+         * callers don't depend on the lifecycle directly.
+         */
+        @Volatile
+        private var liveImeRef: SussurroIme? = null
+
+        /**
+         * Attempt to commit [text] through the currently-active IME instance.
+         * Returns true only when SussurroIme is bound to a host text field
+         * AND the host accepts the commit; in every other case (no live
+         * IME, no input connection, host refuses) the caller should fall
+         * back to the accessibility path.
+         */
+        fun tryCommitFromExternal(text: String): Boolean {
+            val ime = liveImeRef ?: return false
+            return runCatching { ime.commitFromExternal(text) }.getOrDefault(false)
+        }
     }
 }

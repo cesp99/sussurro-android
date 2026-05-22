@@ -71,4 +71,41 @@
 
     <!-- Dialogs -->
     <string name="dialog_close">Close</string>
+
+    <!-- Watch companion session notification (shown on the phone while the
+         watch is recording or the phone is transcribing audio from the watch) -->
+    <string name="watch_session_channel">Sussurro watch session</string>
+    <string name="watch_session_idle">Sussurro</string>
+    <string name="watch_session_recording">Listening from watch…</string>
+    <string name="watch_session_transcribing">Transcribing audio from watch…</string>
+    <string name="watch_session_committed">Sent to focused field</string>
+    <string name="watch_session_error">Watch dictation failed</string>
+    <string name="watch_session_subtext">Tap to open Sussurro</string>
+    <string name="watch_session_stop_action">Stop</string>
+
+    <!-- Accessibility service summary shown in system settings -->
+    <string name="a11y_service_description">Lets Sussurro write transcribed text into the focused text field of any app, even when Sussurro isn\'t the selected keyboard.</string>
+    <string name="a11y_service_summary">Inject dictated text anywhere</string>
+
+    <!-- Phone-side onboarding: watch companion & a11y -->
+    <string name="step_a11y_title">Inject anywhere (optional)</string>
+    <string name="step_a11y_desc">Enable Sussurro\'s accessibility service so dictation from your watch can write into any focused text field, even when another keyboard is active.</string>
+    <string name="step_a11y_enable">Enable accessibility</string>
+    <string name="step_a11y_enabled">Sussurro accessibility is enabled</string>
+
+    <string name="step_watch_title">Watch companion (optional)</string>
+    <string name="step_watch_desc">Install Sussurro on your paired Wear OS watch to dictate hands-free. Audio streams to your phone for transcription.</string>
+    <string name="step_watch_status_connected">Watch paired and reachable</string>
+    <string name="step_watch_status_unknown">No watch detected</string>
+
+    <!-- Settings: Watch companion section -->
+    <string name="settings_section_watch">Watch companion</string>
+    <string name="settings_watch_status_label">Pairing</string>
+    <string name="settings_watch_status_paired">Watch paired and reachable</string>
+    <string name="settings_watch_status_unpaired">No watch detected</string>
+    <string name="settings_watch_a11y_label">Accessibility fallback</string>
+    <string name="settings_watch_a11y_on">Enabled (can inject into any focused field)</string>
+    <string name="settings_watch_a11y_off">Disabled (IME-only injection)</string>
+    <string name="settings_watch_last_transcript_label">Last transcript</string>
+    <string name="settings_watch_last_transcript_empty">No watch dictation received this session yet.</string>
 </resources>

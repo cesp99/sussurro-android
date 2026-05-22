@@ -87,6 +87,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -96,6 +98,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.play.services)
+
+    // Wearable Data Layer for the watch ↔ phone session.
+    implementation(libs.play.services.wearable)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

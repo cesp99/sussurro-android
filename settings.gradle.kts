@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Sussurro by Eyed"
 include(":app")
+include(":shared")
+include(":wear")

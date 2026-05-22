@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- DataSync FGS for the watch-companion service; mic FGS is already
+         present for the keyboard. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <uses-feature
         android:name="android.hardware.microphone"
@@ -45,6 +49,48 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <!-- Watch companion: phone-side foreground service. Uses dataSync
+             because the *watch* holds the mic; the phone only receives PCM. -->
+        <service
+            android:name=".wear.WatchPhoneSessionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Wearable Data Layer listener; receives audio channel + state msgs. -->
+        <service
+            android:name=".wear.WatchPhoneListener"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/sussurro"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
+        <!-- AccessibilityService for writing into any focused text field. -->
+        <service
+            android:name=".inject.SussurroAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service" />
+        </service>
+
+        <!-- Capability advertisement: lets the watch find this phone via
+             CapabilityClient. Path matches WearableProtocol.CAPABILITY_PHONE. -->
+        <meta-data
+            android:name="com.google.android.wearable.capability.declarations"
+            android:resource="@xml/wear_capabilities" />
 
     </application>
 

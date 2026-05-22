@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Configuration for SussurroAccessibilityService.
+
+    We listen for focus + click + selection-change events so we can track the
+    last editable view the user touched, and we declare CAPABILITY_CAN_PERFORM_GESTURES
+    is NOT needed — we only need ACTION_SET_TEXT, which doesn't require a
+    capability flag, and we never request input filtering or window content
+    retrieval beyond what the framework grants by default.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewFocused|typeViewClicked|typeViewTextSelectionChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/a11y_service_description"
+    android:summary="@string/a11y_service_summary"
+    android:notificationTimeout="100" />

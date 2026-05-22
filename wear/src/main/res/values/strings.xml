@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Sussurro</string>
+    <string name="app_short_name">Sussurro</string>
+
+    <!-- Watch states -->
+    <string name="state_idle">Tap to dictate</string>
+    <string name="state_listening">Listening…</string>
+    <string name="state_transcribing">Transcribing…</string>
+    <string name="state_committed">Sent to phone</string>
+    <string name="state_error">Error</string>
+    <string name="state_no_phone">Phone not paired</string>
+    <string name="state_no_permission">Tap to grant mic</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_session">Sussurro session</string>
+    <string name="notification_session_listening">Recording for Sussurro</string>
+    <string name="notification_session_transcribing">Sending audio to phone</string>
+</resources>
