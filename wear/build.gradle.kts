@@ -16,7 +16,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "de.aploi.sussurrobyeyed.wear"
+        // MUST match the phone module's applicationId. Wear OS treats the
+        // watch + phone surfaces as a single app for the Wearable Data
+        // Layer: capabilities and channels declared by one are only
+        // visible to the other when they share the same
+        // (applicationId, signing cert) identity. Diverging here (e.g.
+        // appending ".wear") makes `CapabilityClient.getCapability` return
+        // empty `nodes` even though dumpsys clearly shows the capability
+        // is registered — the lookup is scoped to the caller's app
+        // identity, and a different package id is a different identity.
+        applicationId = "de.aploi.sussurrobyeyed"
         // Wear OS 4 (Android 13). Older watches are uncommon and not worth
         // the ICompat shim cost.
         minSdk = 30
@@ -68,6 +77,21 @@ dependencies {
     implementation(libs.androidx.wear.compose.foundation)
     implementation(libs.androidx.wear.compose.material)
     implementation(libs.play.services.wearable)
+
+    // Wear OS Tiles: a quick-launch entry on the watch tile carousel so the
+    // user can start a Sussurro dictation session without first opening the
+    // app. Pulled in alongside ProtoLayout because tile content cannot be
+    // expressed in Compose — it has to round-trip through the system tile
+    // renderer.
+    implementation(libs.androidx.wear.tiles)
+    implementation(libs.androidx.wear.protolayout)
+    implementation(libs.androidx.wear.protolayout.material)
+    implementation(libs.androidx.wear.protolayout.expression)
+    // ListenableFuture helpers — TileService callbacks return Guava's
+    // ListenableFuture, but the full Guava android library is enormous;
+    // androidx.concurrent ships a tiny `CallbackToFutureAdapter` plus the
+    // ResolvableFuture pattern we use to return an already-completed Tile.
+    implementation(libs.androidx.concurrent.futures)
 
     // Compose (BOM aligns transitive versions)
     implementation(platform(libs.androidx.compose.bom))

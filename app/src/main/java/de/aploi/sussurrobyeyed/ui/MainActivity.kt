@@ -24,14 +24,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.lifecycleScope
+import de.aploi.sussurrobyeyed.BuildConfig
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.data.ThemeMode
 import de.aploi.sussurrobyeyed.inject.TextInjector
 import de.aploi.sussurrobyeyed.model.ModelDownloader
+import de.aploi.sussurrobyeyed.ui.screens.DevScreen
 import de.aploi.sussurrobyeyed.ui.screens.OnboardingScreen
 import de.aploi.sussurrobyeyed.ui.screens.SettingsScreen
 import de.aploi.sussurrobyeyed.ui.theme.SussurroTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Sussurro's only Activity.
@@ -49,6 +54,14 @@ class MainActivity : ComponentActivity() {
 
         val store = SettingsStore(applicationContext)
         val downloader = ModelDownloader(applicationContext)
+
+        // Best-effort cleanup of stale model files left behind by previous
+        // releases (we recently swapped the full-precision Whisper Small for
+        // the Q5_1 quantised variant, which has a different filename).
+        // Fire-and-forget on a coroutine; isn't blocking onCreate.
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { downloader.purgeStaleModels() }
+        }
 
         setContent {
             val settings by store.settings.collectAsState(initial = Settings())
@@ -124,6 +137,24 @@ private fun SussurroApp(
 
     val refreshModelInstalled: () -> Unit = { modelInstalled = downloader.isInstalled() }
 
+    // Debug-only developer screen. Hidden entirely from release builds; we
+    // never read this state outside of `if (BuildConfig.DEBUG)` so R8 can
+    // strip the whole branch from the release APK.
+    var showDev by remember { mutableStateOf(false) }
+
+    if (BuildConfig.DEBUG && showDev) {
+        DevScreen(
+            settings = settings,
+            downloader = downloader,
+            onBack = { showDev = false },
+        )
+        return
+    }
+
+    val openDevCallback: (() -> Unit)? = if (BuildConfig.DEBUG) {
+        { showDev = true }
+    } else null
+
     if (!onboardingComplete) {
         OnboardingScreen(
             permissionGranted = permissionGranted,
@@ -137,6 +168,7 @@ private fun SussurroApp(
             onPermissionResult = { granted -> permissionGranted = granted },
             onOpenSettings = { onboardingComplete = true },
             onModelStateChanged = refreshModelInstalled,
+            onOpenDev = openDevCallback,
         )
     } else {
         SettingsScreen(
@@ -148,6 +180,7 @@ private fun SussurroApp(
                 refreshModelInstalled()
                 onboardingComplete = false
             },
+            onOpenDev = openDevCallback,
         )
     }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Static capability advertisement for the watch. Read by Google Play
+    Services on install / app upgrade so the phone can find this node
+    via `CapabilityClient.getCapability("sussurro_watch")` even when the
+    watch app is not currently running.
+
+    The resource name MUST be `android_wear_capabilities` — that's the
+    well-known array GMS Wearable scans for. Keep this in sync with
+    [WearableProtocol.CAPABILITY_WATCH].
+
+    Belt-and-braces: the same capability is also registered at runtime
+    via `CapabilityClient.addLocalCapability` from the Application's
+    onCreate, which handles edge-cases where GMS' static-declaration
+    cache hasn't refreshed yet (e.g. after a fresh sideload).
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@array/android_wear_capabilities">
+    <string-array name="android_wear_capabilities">
+        <item>sussurro_watch</item>
+    </string-array>
+</resources>

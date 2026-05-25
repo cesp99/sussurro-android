@@ -57,6 +57,37 @@ class ModelDownloader(private val context: Context) {
     }
 
     /**
+     * Remove any `ggml-*.bin` files left over from a previous model variant
+     * (e.g. the 488 MB `ggml-small.bin` after we switch to the Q5_1 build).
+     *
+     * No-op if the only file in the models directory is the current target.
+     * Safe to call repeatedly — only deletes files that don't match
+     * [WhisperModel.fileName] and aren't the in-progress partial.
+     *
+     * @return number of files removed.
+     */
+    suspend fun purgeStaleModels(): Int = withContext(Dispatchers.IO) {
+        val dir = modelFile.parentFile ?: return@withContext 0
+        if (!dir.isDirectory) return@withContext 0
+        val keep = setOf(WhisperModel.fileName, "${WhisperModel.fileName}.part")
+        var removed = 0
+        dir.listFiles()?.forEach { f ->
+            if (!f.isFile) return@forEach
+            val name = f.name
+            if (name in keep) return@forEach
+            if (!name.startsWith("ggml-") || !name.endsWith(".bin")) return@forEach
+            val ok = runCatching { f.delete() }.getOrDefault(false)
+            if (ok) {
+                removed++
+                Log.i(TAG, "purged stale model: $name")
+            } else {
+                Log.w(TAG, "failed to delete stale model: $name")
+            }
+        }
+        removed
+    }
+
+    /**
      * Stream the Whisper model from HuggingFace into [modelFile]. Resumes
      * partial downloads when [partialFile] already exists.
      *

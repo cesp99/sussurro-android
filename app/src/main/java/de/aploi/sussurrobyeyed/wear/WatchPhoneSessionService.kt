@@ -313,13 +313,9 @@ class WatchPhoneSessionService : LifecycleService() {
         engine?.let { return it }
         return engineMutex.withLock {
             engine?.let { return@withLock it }
-            // Note: `WhisperEngine.load` takes only the model file today.
-            // A separate native-dispatch refactor may extend this signature
-            // to pass `applicationInfo.nativeLibraryDir` for dlopening
-            // CPU-variant backends; when that lands, update this call site
-            // and the IME's mirror.
+            val libDir = applicationContext.applicationInfo.nativeLibraryDir
             val created = withContext(Dispatchers.IO) {
-                WhisperEngine.load(downloader.modelFile)
+                WhisperEngine.load(downloader.modelFile, libDir)
             }
             engine = created
             created

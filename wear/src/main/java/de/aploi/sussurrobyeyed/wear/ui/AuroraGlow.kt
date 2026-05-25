@@ -11,260 +11,358 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.unit.dp
-import de.aploi.sussurrobyeyed.wear.ui.theme.WatchColors
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * A bottom-anchored glowing waveform.
+ * Aurora-borealis style glow that anchors the bottom half of the watch face.
  *
  * Visual rules:
- *  - Renders a gentle white glow along the curved edge of the screen even when
- *    [intensity] is 0, so the watch never feels "off". Tracks the bottom arc
- *    of a round display.
- *  - When [intensity] grows, columns of bars rise from the bottom. Each bar's
- *    height is driven by the most recent [amplitude] sample (the watch
- *    AudioRecorder's RMS), with a per-column phase offset and tiny LFO so the
- *    field never looks static.
- *  - A soft outer glow is painted under the bars by stroking the same path
- *    with a wider, lower-alpha colour, plus an additive glow blob along the
- *    bottom — that's the "bluish halo" from the reference screenshot.
+ *  - Several wavy "curtains" of light flow across the bottom half of the
+ *    canvas. Each curtain has a bright white ridge at its top edge that
+ *    fades down through pale lilac into a deeper violet wash before
+ *    melting into transparent — the same way a real aurora's tendrils
+ *    fade from white-hot at the crest into dim purple at the horizon.
+ *  - The curtains never sit still. Three independent low-frequency
+ *    phases (slow / medium / fast) drive different bands, so the whole
+ *    field undulates organically and never repeats on screen.
+ *  - Microphone amplitude lifts the curtains higher, deepens their
+ *    wobble and brightens the white edge — this is the "reacts to
+ *    speech" cue while recording. Without mic input the curtains still
+ *    drift gently from the LFO phases.
+ *  - During transcribing a small synthetic amplitude keeps the curtains
+ *    breathing, and a soft shimmer sweeps across the bottom half to
+ *    communicate "the phone is thinking".
  *
- * @param amplitude latest mic RMS in [0,1].
- * @param intensity overall presence of the waveform in [0,1]. 0 ≈ ambient
- *   idle glow only, 1 ≈ fully grown bars during recording.
- * @param transcribing if true, an additional sweeping shimmer is layered on
- *   top of the bars to communicate "the phone is working".
+ * @param amplitude raw mic RMS in [0, 1] (treated against the 0.08 scale
+ *   the phone capsule uses, so a normal-volume voice fills the field).
+ * @param intensity overall presence in [0, 1]. 0 is the calm "always
+ *   visible" idle baseline; 1 is "fully lit" during an active session.
+ * @param transcribing toggles the shimmer + synthetic motion overlay.
  */
 @Composable
-fun WaveformGlow(
+fun AuroraGlow(
     amplitude: Float,
     intensity: Float,
     transcribing: Boolean,
     modifier: Modifier = Modifier,
-    color: Color = WatchColors.OnBackground,
-    glowColor: Color = WatchColors.Glow,
 ) {
-    // 24 bars across the bottom is dense enough to look smooth but cheap
-    // enough that the watch GPU can redraw at the per-frame infinite ticker
-    // we install below.
-    val barCount = 24
-
-    // Ring buffer of recent amplitudes — gives every bar its own "history" so
-    // they don't all bounce in unison. Treated like a scroll: we shift and
-    // append the latest amplitude on every recomposition.
-    val ring = remember { FloatArray(barCount) }
-    var head by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(amplitude) {
-        ring[head] = amplitude
-        head = (head + 1) % barCount
-    }
-
-    // Ease the intensity in/out so the bars don't snap when we transition
-    // states. ~280 ms gives a soft "growing" effect without dragging.
-    val animatedIntensity by animateFloatAsState(
-        targetValue = intensity.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = 280, easing = LinearEasing),
-        label = "intensity",
-    )
-
-    // Idle pulse — even at intensity=0 the bottom should breathe. Phase comes
-    // from a clock tick that recomposes us at ~60 Hz.
-    val transition = rememberInfiniteTransition(label = "wave-tick")
-    val phase by transition.animateFloat(
+    // Three slow LFO phases on different periods. Picking values that
+    // aren't simple integer ratios of each other keeps the resulting
+    // motion from quantising into an obvious loop.
+    val transition = rememberInfiniteTransition(label = "aurora-tick")
+    val phaseSlow by transition.animateFloat(
         initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
+        targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = LinearEasing),
+            animation = tween(durationMillis = 11_300, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
-        label = "wave-phase",
+        label = "phase-slow",
+    )
+    val phaseMed by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 7_100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "phase-med",
+    )
+    val phaseFast by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4_300, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "phase-fast",
     )
 
+    // Sweep that travels left-to-right while the phone is transcribing.
     val shimmer by transition.animateFloat(
-        initialValue = -0.4f,
-        targetValue = 1.4f,
+        initialValue = -0.25f,
+        targetValue = 1.25f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_400, easing = LinearEasing),
+            animation = tween(durationMillis = 2_200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "shimmer",
     )
 
-    // Smoothed bar heights so the waveform doesn't look jittery on noisy
-    // mics. Same low-pass mix as the phone keyboard's RecordingBars.
-    val smoothed = remember { FloatArray(barCount) }
+    // Ease overall presence in / out so the curtains don't snap on session
+    // transitions.
+    val animatedIntensity by animateFloatAsState(
+        targetValue = intensity.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 480, easing = LinearEasing),
+        label = "intensity",
+    )
 
-    // Track the previous transcribing flag so we don't allocate a brush every
-    // frame; the brush only depends on shimmer + colour + size.
-    val transcribingState = remember { mutableStateOf(transcribing) }
-    transcribingState.value = transcribing
+    // Light EMA on the mic amplitude so the curtains don't jitter on noisy
+    // mics, but stay responsive enough to feel like the user's voice is
+    // pushing them.
+    val smoothedAmplitude = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(amplitude) {
+        smoothedAmplitude.floatValue =
+            smoothedAmplitude.floatValue * 0.55f + amplitude.coerceIn(0f, 1f) * 0.45f
+    }
+    // Match the phone keyboard's capsule mapping: an RMS around 0.08
+    // counts as "full".
+    val ampNorm = (smoothedAmplitude.floatValue / 0.08f).coerceIn(0f, 1f)
 
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val cx = w / 2f
-        // Approximate the watch face radius from the canvas size.
-        val radius = max(w, h) / 2f
-        // Centre of the implied circle is below the canvas — the bottom arc
-        // we want to highlight is the segment that the watch displays at the
-        // bottom of the dial.
-        val centerY = h - radius
-
-        // ---- 1. Ambient bottom-edge glow (always visible) ----
-        val ambientAlpha = 0.10f + 0.10f * (0.5f + 0.5f * sin(phase).toFloat())
-        val ambientPath = Path().apply {
-            // A thin arc along the bottom; we approximate with a stroked path
-            // that traces the bottom 90 degrees of the watch circle.
-            addArc(
-                oval = Rect(
+        // Assume the round face fills the canvas (true on Wear round
+        // displays) and clip everything inside it. This way the curtains
+        // taper into the bezel cleanly rather than getting chopped flat
+        // at the corners.
+        val radius = min(w, h) / 2f
+        val faceCenterY = h / 2f
+        val watchFace = Path().apply {
+            addOval(
+                Rect(
                     left = cx - radius,
-                    top = centerY - radius,
+                    top = faceCenterY - radius,
                     right = cx + radius,
-                    bottom = centerY + radius,
+                    bottom = faceCenterY + radius,
                 ),
-                startAngleDegrees = 30f,
-                sweepAngleDegrees = 120f,
             )
         }
-        // Wide soft underglow then a tighter brighter line on top — the
-        // bottom of the screen reads as "lit from below" the way the
-        // reference screenshot does.
-        drawPath(
-            path = ambientPath,
-            color = glowColor.copy(alpha = 0.30f * ambientAlpha + 0.12f),
-            style = Stroke(width = 36.dp.toPx()),
-        )
-        drawPath(
-            path = ambientPath,
-            color = color.copy(alpha = 0.55f * ambientAlpha + 0.18f),
-            style = Stroke(width = 14.dp.toPx()),
-        )
-        drawPath(
-            path = ambientPath,
-            color = color.copy(alpha = 0.85f),
-            style = Stroke(width = 2.dp.toPx()),
-        )
 
-        // ---- 2. Active bars when intensity > 0 ----
-        if (animatedIntensity > 0.001f) {
-            val barWidth = 4.dp.toPx()
-            val barGap = 4.dp.toPx()
-            val totalWidth = barCount * barWidth + (barCount - 1) * barGap
-            val left = cx - totalWidth / 2f
-            val baseY = h - 18.dp.toPx() // sits just above the bottom rim
-            val maxBarHeight = (h * 0.55f).coerceAtLeast(80.dp.toPx())
+        // When transcribing we still want the curtains to look alive even
+        // though there's no mic feeding amplitude. A small synthetic LFO
+        // wave gives them a gentle "thinking" pulse.
+        val syntheticAmp = if (transcribing) {
+            val s = (sin(phaseFast * 2.7f + 0.6f).toFloat() + 1f) * 0.5f
+            0.20f + 0.20f * s
+        } else 0f
+        val effectiveAmp = max(ampNorm, syntheticAmp)
 
-            // Clip the bars to the implied round face. Without this, even
-            // tapered bars near the screen edge can leak under the bezel
-            // on small / strongly-curved watches; the bezel then chops
-            // them mid-stroke and the silhouette reads as broken.
-            val watchFacePath = Path().apply {
-                addOval(
-                    Rect(
-                        left = cx - radius,
-                        top = centerY - radius,
-                        right = cx + radius,
-                        bottom = centerY + radius,
-                    ),
+        clipPath(watchFace) {
+            // -------- Aurora curtains --------
+            // Five bands. Ordered back-to-front so the brighter / whiter
+            // ridges sit on top of the violet washes.
+            //
+            // freq is "wave cycles across the canvas width". Keeping
+            // these in a 0.7..2.2 range avoids the bands resolving into
+            // a single visual stripe.
+            val bands = listOf(
+                AuroraBand(
+                    tipColor = Color(0xFFB39CFF),   // lilac wash (back)
+                    midColor = Color(0xFF7556E8),   // deeper violet
+                    baseFrac = 0.58f,
+                    waveAmpFrac = 0.055f,
+                    freq = 0.95f,
+                    phase = phaseMed * 0.9f + 3.1f,
+                    opacity = 0.45f,
+                ),
+                AuroraBand(
+                    tipColor = Color(0xFFE6DAFF),   // pale lilac
+                    midColor = Color(0xFF8A6FFF),
+                    baseFrac = 0.65f,
+                    waveAmpFrac = 0.05f,
+                    freq = 1.3f,
+                    phase = phaseSlow,
+                    opacity = 0.6f,
+                ),
+                AuroraBand(
+                    tipColor = Color(0xFFFFFFFF),   // pure white ridge
+                    midColor = Color(0xFFB498FF),
+                    baseFrac = 0.72f,
+                    waveAmpFrac = 0.045f,
+                    freq = 1.1f,
+                    phase = phaseMed + 1.4f,
+                    opacity = 0.85f,
+                ),
+                AuroraBand(
+                    tipColor = Color(0xFFFFFFFF),   // bright white, faster wobble
+                    midColor = Color(0xFFC9B5FF),
+                    baseFrac = 0.69f,
+                    waveAmpFrac = 0.05f,
+                    freq = 1.9f,
+                    phase = phaseFast + 2.2f,
+                    opacity = 0.7f,
+                ),
+                AuroraBand(
+                    tipColor = Color(0xFFF4ECFF),   // near-white front, slow drift
+                    midColor = Color(0xFF9C7DFF),
+                    baseFrac = 0.76f,
+                    waveAmpFrac = 0.04f,
+                    freq = 0.75f,
+                    phase = phaseSlow * 1.4f + 0.5f,
+                    opacity = 0.55f,
+                ),
+            )
+
+            for (band in bands) {
+                drawAuroraBand(
+                    band = band,
+                    intensity = animatedIntensity,
+                    amplitude = effectiveAmp,
+                    samples = 56,
                 )
             }
 
-            clipPath(watchFacePath) {
-                for (i in 0 until barCount) {
-                    val historyIdx = (head + i) % barCount
-                    val raw = ring[historyIdx]
-                    val norm = min(1f, raw / 0.08f) // RMS_SCALE matches phone capsule
-                    // LFO so quiet captures still wave gently rather than freezing.
-                    val lfo = 0.5f + 0.5f * sin(phase * 1.5f + i * 0.4f).toFloat()
-                    val target = norm * 0.85f + lfo * 0.15f
-                    smoothed[i] = smoothed[i] * 0.7f + target * 0.3f
+            // -------- Horizon glow --------
+            // Subtle additive light along the very bottom edge so the
+            // curtains feel like they're rooted in something rather than
+            // hovering. Brightens slightly with intensity.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFFB39CFF).copy(alpha = 0.10f + 0.10f * animatedIntensity),
+                        Color(0xFFE8DFFF).copy(alpha = 0.18f + 0.12f * animatedIntensity),
+                    ),
+                    startY = h * 0.82f,
+                    endY = h,
+                ),
+            )
 
-                    // Distance from the centre — bars at the edge of the
-                    // screen run into the round bezel, so we taper their
-                    // max height following the implied circle. The
-                    // clipPath above is the hard guarantee; this taper is
-                    // a visual softener so the silhouette curves rather
-                    // than stair-stepping.
-                    val barCx = left + i * (barWidth + barGap) + barWidth / 2f
-                    val dx = barCx - cx
-                    val edgeFactor = 1f - (dx * dx) / (radius * radius)
-                    val taper = edgeFactor.coerceIn(0.05f, 1f)
-
-                    val height = maxBarHeight * smoothed[i] * animatedIntensity * taper
-                    val top = baseY - height
-
-                    val barRect = RoundRect(
-                        left = barCx - barWidth / 2f,
-                        top = top,
-                        right = barCx + barWidth / 2f,
-                        bottom = baseY,
-                        radiusX = barWidth / 2f,
-                        radiusY = barWidth / 2f,
-                    )
-
-                    // Fill: vertical white -> bluish gradient so each bar feels
-                    // luminescent.
-                    val brush = Brush.verticalGradient(
+            // -------- Transcribing shimmer --------
+            // Travels across the lower half only; the top is reserved
+            // for the status text and shouldn't pick up stray light.
+            if (transcribing) {
+                val sweepX = w * shimmer
+                drawRect(
+                    brush = Brush.linearGradient(
                         colors = listOf(
-                            color.copy(alpha = 0.95f),
-                            color.copy(alpha = 0.75f),
-                            glowColor.copy(alpha = 0.35f),
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.22f),
+                            Color(0xFFD7C6FF).copy(alpha = 0.18f),
+                            Color.Transparent,
                         ),
-                        startY = top,
-                        endY = baseY,
-                    )
-                    drawPath(
-                        path = Path().apply { addRoundRect(barRect) },
-                        brush = brush,
-                    )
-
-                    // Soft outer glow stroke — small but noticeable.
-                    drawPath(
-                        path = Path().apply { addRoundRect(barRect) },
-                        color = glowColor.copy(alpha = 0.40f * animatedIntensity),
-                        style = Stroke(width = 6.dp.toPx()),
-                    )
-                }
+                        start = Offset(sweepX - w * 0.22f, h * 0.5f),
+                        end = Offset(sweepX + w * 0.22f, h),
+                    ),
+                    topLeft = Offset(0f, h * 0.50f),
+                    size = Size(w, h * 0.50f),
+                )
             }
         }
-
-        // ---- 3. Transcribing shimmer overlay ----
-        if (transcribingState.value) {
-            // A bright, narrow gradient travels left-to-right across the
-            // ambient arc, signalling "thinking".
-            val sweepX = w * shimmer
-            val sweepBrush = Brush.linearGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    color.copy(alpha = 0.95f),
-                    Color.Transparent,
-                ),
-                start = Offset(sweepX - w * 0.12f, 0f),
-                end = Offset(sweepX + w * 0.12f, h),
-            )
-            drawPath(
-                path = ambientPath,
-                brush = sweepBrush,
-                style = Stroke(width = 6.dp.toPx()),
-            )
-        }
     }
+}
+
+/**
+ * Single curtain of light. Each band is rendered as a polygon whose top
+ * edge undulates according to its own phase + frequency, with a vertical
+ * gradient underneath that fades white → violet → transparent.
+ *
+ * @param tipColor the colour painted right along the wavy ridge — almost
+ *   always white-ish so the user reads each curtain as "a streak of
+ *   light".
+ * @param midColor the colour the band fades to a third of the way down,
+ *   before going fully transparent at the bottom of the canvas. This is
+ *   where the lilac / violet character of the aurora lives.
+ * @param baseFrac y position of the ridge as a fraction of canvas
+ *   height, before amplitude / wave displacement.
+ * @param waveAmpFrac vertical wobble amplitude as a fraction of height.
+ * @param freq number of wave cycles spanning the canvas width.
+ * @param phase animated phase offset (radians).
+ * @param opacity peak alpha of the band at its tip.
+ */
+private data class AuroraBand(
+    val tipColor: Color,
+    val midColor: Color,
+    val baseFrac: Float,
+    val waveAmpFrac: Float,
+    val freq: Float,
+    val phase: Float,
+    val opacity: Float,
+)
+
+private fun DrawScope.drawAuroraBand(
+    band: AuroraBand,
+    intensity: Float,
+    amplitude: Float,
+    samples: Int,
+) {
+    val w = size.width
+    val h = size.height
+
+    // Amplitude both lifts the ridge upward and exaggerates the wobble.
+    // The lift is more aggressive than the wobble because vertical
+    // displacement reads more clearly on a small watch face than
+    // changes in wave shape.
+    val ampLiftPx = h * 0.16f * amplitude
+    val waveAmpPx = (h * band.waveAmpFrac) * (1f + 0.6f * amplitude)
+    val baseY = band.baseFrac * h - ampLiftPx
+
+    // Sample the wavy ridge. Three sines summed together avoid the
+    // tell-tale single-sinusoid silhouette: a primary wave, a slower
+    // drift to nudge the whole ridge up/down, and a smaller overtone
+    // for the choppy "aurora wisp" feel.
+    val topYs = FloatArray(samples + 1)
+    var ridgeMin = Float.MAX_VALUE
+    for (i in 0..samples) {
+        val t = i.toFloat() / samples
+        val w1 = sin(t * band.freq * 2 * PI + band.phase).toFloat()
+        val w2 = sin(t * band.freq * 0.6 * PI + band.phase * 1.3 + 1.0).toFloat() * 0.55f
+        val w3 = sin(t * band.freq * 3.7 * PI + band.phase * 0.7 + 2.4).toFloat() * 0.28f
+        val wave = (w1 + w2 + w3) / 1.83f
+        val y = baseY + wave * waveAmpPx
+        topYs[i] = y
+        if (y < ridgeMin) ridgeMin = y
+    }
+
+    // Fill polygon: the wavy ridge across the top, then two corners down
+    // to the canvas bottom so the gradient has somewhere to fade into.
+    val fillPath = Path().apply {
+        moveTo(0f, topYs[0])
+        for (i in 1..samples) lineTo(i.toFloat() / samples * w, topYs[i])
+        lineTo(w, h)
+        lineTo(0f, h)
+        close()
+    }
+
+    // Amplitude also brightens the band slightly so loud bits "pop".
+    val alphaBoost = 1f + 0.25f * amplitude
+    val tipAlpha = (band.opacity * intensity * alphaBoost).coerceIn(0f, 1f)
+    val midAlpha = (band.opacity * 0.45f * intensity * alphaBoost).coerceIn(0f, 1f)
+
+    drawPath(
+        path = fillPath,
+        brush = Brush.verticalGradient(
+            colors = listOf(
+                band.tipColor.copy(alpha = tipAlpha),
+                band.midColor.copy(alpha = midAlpha),
+                band.midColor.copy(alpha = midAlpha * 0.35f),
+                band.midColor.copy(alpha = 0f),
+            ),
+            startY = ridgeMin,
+            endY = h,
+        ),
+    )
+
+    // Thin highlight stroke along the ridge itself. Without this the
+    // ridge can look soft on dim bands; the highlight gives every
+    // curtain a definite "edge of light" you can follow with the eye.
+    val ridgePath = Path().apply {
+        moveTo(0f, topYs[0])
+        for (i in 1..samples) lineTo(i.toFloat() / samples * w, topYs[i])
+    }
+    drawPath(
+        path = ridgePath,
+        color = band.tipColor.copy(
+            alpha = (band.opacity * 0.65f * intensity * alphaBoost).coerceIn(0f, 0.85f),
+        ),
+        style = Stroke(width = 1.5.dp.toPx()),
+    )
 }

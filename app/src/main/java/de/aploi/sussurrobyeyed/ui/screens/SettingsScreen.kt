@@ -1,5 +1,6 @@
 package de.aploi.sussurrobyeyed.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
@@ -36,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +62,7 @@ import de.aploi.sussurrobyeyed.ui.components.SectionCard
 import de.aploi.sussurrobyeyed.wear.LastWatchTranscript
 import de.aploi.sussurrobyeyed.wear.WatchPresence
 import de.aploi.sussurrobyeyed.whisper.WhisperLib
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -82,6 +86,7 @@ internal fun SettingsScreen(
     modelInstalled: Boolean,
     downloader: ModelDownloader,
     onMissingModel: () -> Unit,
+    onOpenDev: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     Scaffold(
@@ -93,6 +98,19 @@ internal fun SettingsScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
+                },
+                actions = {
+                    // Debug-only entry to the developer screen. The caller in
+                    // MainActivity only passes a non-null callback under
+                    // BuildConfig.DEBUG, so release users never see this.
+                    if (onOpenDev != null) {
+                        IconButton(onClick = onOpenDev) {
+                            Icon(
+                                imageVector = Icons.Filled.BugReport,
+                                contentDescription = stringResource(R.string.dev_open),
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -219,8 +237,86 @@ private fun WatchCompanionStatus() {
             label = stringResource(R.string.settings_watch_last_transcript_label),
             value = lastTranscript ?: stringResource(R.string.settings_watch_last_transcript_empty),
         )
+        HorizontalDivider()
+        WatchTestRow()
     }
 }
+
+/**
+ * "Send a test transcription" tile. Pushes a known short string through
+ * [TextInjector] after a brief countdown so the user has time to switch
+ * apps and focus a text field, which is the only way to confirm "no
+ * focus" / "enable accessibility" failures without owning a watch.
+ *
+ * Surfaces success / failure as a Toast — easier to read after switching
+ * apps than an in-place banner buried in settings.
+ */
+@Composable
+private fun WatchTestRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var countdown by remember { mutableIntStateOf(0) }
+    val running = countdown > 0
+
+    // Resolve every templated string up-front in composable scope so the
+    // Toast lambda below doesn't have to reach back into a Context.getString
+    // call (which the Compose lint rule LocalContextGetResourceValueCall
+    // rejects — strings should be pre-resolved at recomposition time).
+    // stringResource() without args returns the raw template, which we
+    // then String.format() once we know `result.reason` at click-time.
+    val payload = stringResource(R.string.settings_watch_test_payload)
+    val okTemplate = stringResource(R.string.settings_watch_test_ok)
+    val failedTemplate = stringResource(R.string.settings_watch_test_failed)
+
+    Column {
+        Text(
+            text = stringResource(R.string.settings_watch_test_label),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = stringResource(R.string.settings_watch_test_desc, TEST_COUNTDOWN_SECONDS),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(
+            enabled = !running,
+            onClick = {
+                scope.launch {
+                    countdown = TEST_COUNTDOWN_SECONDS
+                    while (countdown > 0) {
+                        delay(1_000)
+                        countdown -= 1
+                    }
+                    val result = TextInjector.inject(context, payload)
+                    val msg = if (result.ok) {
+                        okTemplate.format(result.reason)
+                    } else {
+                        failedTemplate.format(result.reason)
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            },
+        ) {
+            Text(
+                if (running) {
+                    stringResource(R.string.settings_watch_test_countdown, countdown)
+                } else {
+                    stringResource(R.string.settings_watch_test_button)
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Countdown the test-transcription button waits before attempting to
+ * inject. Tuned to be just long enough for "tap → swipe to another app
+ * → tap a text field" on a stock phone.
+ */
+private const val TEST_COUNTDOWN_SECONDS: Int = 5
 
 @Composable
 private fun StatusRow(label: String, value: String) {
@@ -245,7 +341,7 @@ private fun SpeechRow(
     onDelete: () -> Unit,
 ) {
     val (label, sublabel) = if (modelInstalled) {
-        WhisperModel.name to "installed · 488 MB"
+        WhisperModel.name to "installed · ${WhisperModel.approximateSizeLabel}"
     } else {
         WhisperModel.name to "not installed"
     }

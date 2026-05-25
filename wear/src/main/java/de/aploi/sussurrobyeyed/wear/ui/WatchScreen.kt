@@ -45,7 +45,7 @@ import kotlinx.coroutines.delay
  * Layout (top → bottom):
  *  - Status text near the top, just below the system clock so the system
  *    chrome doesn't fight us. Always rendered, fades subtly between states.
- *  - Centered on the lower third: the [WaveformGlow] taking up the bottom
+ *  - Centered on the lower third: the [AuroraGlow] taking up the bottom
  *    half of the screen, with the bottom-edge ambient glow rendered even
  *    when idle.
  *
@@ -80,17 +80,22 @@ fun WatchScreen(
         else -> stringResource(R.string.state_idle)
     }
 
-    // Intensity drives "how grown" the waveform looks. 0 when truly idle so
-    // we still show the soft ambient glow at the bottom; 1 while recording.
+    // Intensity drives how prominent the aurora curtains look. The aurora
+    // is always at least faintly visible (the user asked for "always on,
+    // gentle drift" at idle), so even SessionState.Idle gets a non-zero
+    // baseline instead of going fully dark.
     val intensity = when (sessionState) {
         SessionState.Recording -> 1f
-        SessionState.Transcribing -> 0.45f
-        SessionState.Committed -> 0.25f
-        else -> 0f
+        SessionState.Transcribing -> 0.75f
+        SessionState.Committed -> 0.55f
+        SessionState.Error -> 0.40f
+        SessionState.Idle -> 0.40f
     }
 
-    // Don't trust the controller alone for the visual amplitude; cap to its
-    // recorder-state to avoid lingering bars after stop.
+    // Only feed real mic amplitude into the aurora while the recorder is
+    // actively capturing; otherwise the curtains would keep "reacting" to
+    // a stale RMS value after stop. During transcribing the aurora gets
+    // its own synthetic pulse from the composable side.
     val displayAmplitude = if (recorderState == WatchAudioRecorder.State.Recording) rms else 0f
 
     // Transient transcript echo: once we've committed, peek at the first
@@ -134,16 +139,16 @@ fun WatchScreen(
                 )
             },
     ) {
-        // Waveform fills the whole canvas; its rendering already constrains
-        // bars to the bottom half of the watch face.
-        WaveformGlow(
+        // Aurora fills the whole canvas; its rendering already constrains
+        // the curtains to the bottom half of the watch face.
+        AuroraGlow(
             amplitude = displayAmplitude,
             intensity = intensity,
             transcribing = sessionState == SessionState.Transcribing,
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Status overlay. Sits up top so the bottom waveform owns the rest
+        // Status overlay. Sits up top so the bottom aurora owns the rest
         // of the visual real estate.
         Column(
             modifier = Modifier
@@ -221,7 +226,7 @@ fun WatchScreen(
         }
     }
 
-    // The rest of the watch face stays intentionally empty — the screenshot's
+    // The rest of the watch face stays intentionally empty — the design's
     // intent is a near-empty dial whose meaning lives in the glowing
-    // waveform at the bottom.
+    // aurora at the bottom.
 }

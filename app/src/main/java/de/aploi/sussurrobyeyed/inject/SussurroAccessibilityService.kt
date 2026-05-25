@@ -59,7 +59,18 @@ class SussurroAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Append [text] to whatever editable node currently holds input focus.
+     * Insert [text] at the current cursor position of whatever editable node
+     * has input focus. Falls back to "append at end" when the node doesn't
+     * report a usable selection.
+     *
+     * Note about hint text: a freshly-focused empty field still returns its
+     * placeholder string from [AccessibilityNodeInfo.getText] — e.g.
+     * WhatsApp's compose box returns "Messaggio" in Italian even though the
+     * buffer is empty. We must NOT treat that as existing user content;
+     * concatenating onto it produces transcripts like "Messaggiociao". The
+     * authoritative API for this is [AccessibilityNodeInfo.isShowingHintText]
+     * (added in API 26, well below our minSdk 31), which we check before
+     * reading [AccessibilityNodeInfo.getText].
      *
      * @return true if the text was committed successfully.
      */
@@ -71,8 +82,38 @@ class SussurroAccessibilityService : AccessibilityService() {
             return false
         }
         return try {
-            val existing = node.text?.toString() ?: ""
-            val updated = existing + text
+            // Treat the field as empty whenever the node is currently
+            // displaying its hint/placeholder string rather than real user
+            // content. This is the canonical way Android distinguishes
+            // "user has typed something" from "we're rendering the
+            // placeholder" — `getText()` alone returns the hint and would
+            // otherwise be concatenated onto the transcript.
+            val existing = if (node.isShowingHintText) {
+                ""
+            } else {
+                node.text?.toString() ?: ""
+            }
+
+            // Splice [text] in at the caret, the way an IME's commitText
+            // would. When the node doesn't report a valid selection
+            // (selectionStart < 0) treat it as an append at the end of the
+            // buffer.
+            val selStart = node.textSelectionStart
+            val selEnd = node.textSelectionEnd
+            val (insertAt, replaceUpTo) = if (selStart in 0..existing.length &&
+                selEnd in selStart..existing.length
+            ) {
+                selStart to selEnd
+            } else {
+                existing.length to existing.length
+            }
+            val updated = buildString(existing.length + text.length) {
+                append(existing, 0, insertAt)
+                append(text)
+                append(existing, replaceUpTo, existing.length)
+            }
+            val newCursor = insertAt + text.length
+
             val args = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
@@ -81,15 +122,22 @@ class SussurroAccessibilityService : AccessibilityService() {
             }
             val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             if (ok) {
-                // Also try to move the cursor to end. Best effort; some
-                // fields don't honour selection actions.
+                // Best effort: place the cursor right after the inserted
+                // run so the user can keep dictating / typing. Some fields
+                // don't honour selection actions; those just keep whatever
+                // selection they had.
                 val cursorArgs = Bundle().apply {
-                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, updated.length)
-                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, updated.length)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, newCursor)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, newCursor)
                 }
                 node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, cursorArgs)
             }
-            Log.i(TAG, "appendToFocusedField: ok=$ok len=${text.length}")
+            Log.i(
+                TAG,
+                "appendToFocusedField: ok=$ok len=${text.length} " +
+                    "hint=${node.isShowingHintText} " +
+                    "sel=$selStart..$selEnd existingLen=${existing.length}",
+            )
             ok
         } catch (t: Throwable) {
             Log.e(TAG, "appendToFocusedField failed", t)

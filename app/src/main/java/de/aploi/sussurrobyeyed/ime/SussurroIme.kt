@@ -23,6 +23,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import de.aploi.sussurrobyeyed.BuildConfig
 import de.aploi.sussurrobyeyed.audio.AudioRecorder
+import de.aploi.sussurrobyeyed.audio.SilenceTrimmer
 import de.aploi.sussurrobyeyed.data.Settings
 import de.aploi.sussurrobyeyed.data.SettingsStore
 import de.aploi.sussurrobyeyed.model.ModelDownloader
@@ -40,6 +41,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Sussurro's voice-only keyboard.
@@ -78,8 +82,10 @@ class SussurroIme : InputMethodService(),
     private lateinit var settingsStore: SettingsStore
     private lateinit var downloader: ModelDownloader
 
-    private var engine: WhisperEngine? = null
+    @Volatile private var engine: WhisperEngine? = null
+    private val engineMutex = Mutex()
     private var transcribeJob: Job? = null
+    private var prewarmJob: Job? = null
 
     // ---- UI state ----
     private val _capsuleState = MutableStateFlow(CapsuleState.Idle)
@@ -165,6 +171,25 @@ class SussurroIme : InputMethodService(),
             CapsuleState.Idle
         } else {
             CapsuleState.Idle
+        }
+
+        // Pre-warm the whisper.cpp context so the *first* tap doesn't pay the
+        // model-load cost on the foreground thread of the host app. Cheap to
+        // call repeatedly — ensureEngine() is idempotent and the mutex inside
+        // it serialises concurrent attempts.
+        prewarmEngineIfPossible()
+    }
+
+    private fun prewarmEngineIfPossible() {
+        if (engine != null) return
+        if (prewarmJob?.isActive == true) return
+        if (!downloader.isInstalled()) return
+        prewarmJob = serviceScope.launch {
+            try {
+                ensureEngine()
+            } catch (t: Throwable) {
+                Log.w(TAG, "engine pre-warm failed", t)
+            }
         }
     }
 
@@ -284,12 +309,37 @@ class SussurroIme : InputMethodService(),
                 _capsuleState.value = CapsuleState.Idle
                 return@launch
             }
+
+            // Strip leading/trailing silence so Whisper's encoder doesn't waste
+            // a 30 s padded frame on dead air. Fall back to the raw buffer if
+            // the trimmer left us with too little signal (e.g. trimmer flagged
+            // a soft-spoken capture as silence) — better to ask Whisper to
+            // decode quiet audio than to drop it on the floor.
+            val trim = SilenceTrimmer.trim(audio, AudioRecorder.SAMPLE_RATE)
+            val minAudioSamples = AudioRecorder.SAMPLE_RATE / 5 // 200 ms
+            val audioForWhisper = if (trim.trimmed.size >= minAudioSamples) {
+                Log.i(
+                    TAG,
+                    "silence trim: kept ${trim.trimmed.size}/${audio.size} samples " +
+                        "(lead=${trim.leadingSamplesCut}, trail=${trim.trailingSamplesCut}, " +
+                        "threshold=%.4f)".format(trim.rmsThreshold),
+                )
+                trim.trimmed
+            } else {
+                Log.w(
+                    TAG,
+                    "silence trim too aggressive (kept ${trim.trimmed.size} samples), " +
+                        "falling back to raw buffer",
+                )
+                audio
+            }
+
             try {
                 val engine = ensureEngine()
                 val settings = settingsFlow.value
                 val started = System.currentTimeMillis()
                 val rawText = engine.transcribe(
-                    audio = audio,
+                    audio = audioForWhisper,
                     language = settings.language.takeIf { it != Settings.LANGUAGE_AUTO },
                     translate = false,
                     threads = WhisperEngine.defaultThreadCount(),
@@ -308,10 +358,18 @@ class SussurroIme : InputMethodService(),
     }
 
     private suspend fun ensureEngine(): WhisperEngine {
+        // Fast path: already loaded.
         engine?.let { return it }
-        val created = WhisperEngine.load(downloader.modelFile)
-        engine = created
-        return created
+        // Slow path: serialise concurrent loads (prewarm + first tap can race).
+        return engineMutex.withLock {
+            engine?.let { return@withLock it }
+            val libDir = applicationContext.applicationInfo.nativeLibraryDir
+            val created = withContext(Dispatchers.IO) {
+                WhisperEngine.load(downloader.modelFile, libDir)
+            }
+            engine = created
+            created
+        }
     }
 
     /**

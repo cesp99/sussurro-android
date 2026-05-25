@@ -15,4 +15,10 @@
     <string name="notification_channel_session">Sussurro session</string>
     <string name="notification_session_listening">Recording for Sussurro</string>
     <string name="notification_session_transcribing">Sending audio to phone</string>
+
+    <!-- Tile content. The tile is a single-tap launcher onto the watch's
+         tile carousel; tapping the surface opens MainActivity, which is
+         already wired to start a session as soon as the mic is granted. -->
+    <string name="tile_brand">Sussurro</string>
+    <string name="tile_action">Tap to dictate</string>
 </resources>

@@ -17,6 +17,7 @@
         android:required="true" />
 
     <application
+        android:name=".SussurroApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -86,11 +87,11 @@
                 android:resource="@xml/accessibility_service" />
         </service>
 
-        <!-- Capability advertisement: lets the watch find this phone via
-             CapabilityClient. Path matches WearableProtocol.CAPABILITY_PHONE. -->
-        <meta-data
-            android:name="com.google.android.wearable.capability.declarations"
-            android:resource="@xml/wear_capabilities" />
+        <!-- Capability advertisement is in res/values/wear.xml — that's
+             the only static-declaration path Google Play Services actually
+             reads. The earlier `<meta-data ... capability.declarations />`
+             form is not a real Wear OS API and was silently dropped on the
+             floor by GMS, leaving the watch unable to discover the phone. -->
 
     </application>
 

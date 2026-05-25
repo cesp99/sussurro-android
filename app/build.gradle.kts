@@ -83,6 +83,17 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // Extract native libs to disk on install instead of mmap'ing them
+        // from inside the APK. Required because the JNI calls
+        // `ggml_backend_load_all_from_path(nativeLibraryDir)` to dlopen
+        // the right ggml-cpu variant at startup, and that path only
+        // contains real files when libs are extracted. With the modern
+        // default (`useLegacyPackaging = false`) the dir would be empty
+        // and ggml would fall back to no backend, which whisper_init
+        // dereferences as null and crashes the process.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 

@@ -14,9 +14,9 @@
     <string name="step_permission_granted">Permission granted</string>
 
     <string name="step_model_title">Whisper model</string>
-    <string name="step_model_desc_idle">Download the Whisper Small model (~488 MB). One-time. After this Sussurro is fully offline.</string>
+    <string name="step_model_desc_idle">Download the Whisper Small (Q5_1) model (~190 MB). One-time. After this Sussurro is fully offline.</string>
     <string name="step_model_desc_downloading">Downloading model…</string>
-    <string name="step_model_desc_ready">Whisper Small is installed.</string>
+    <string name="step_model_desc_ready">Whisper Small (Q5_1) is installed.</string>
     <string name="step_model_download">Download</string>
     <string name="step_model_redownload">Re-download</string>
     <string name="step_model_delete">Delete model</string>
@@ -72,6 +72,51 @@
     <!-- Dialogs -->
     <string name="dialog_close">Close</string>
 
+    <!-- Developer / debug screen (debug builds only) -->
+    <string name="dev_title">Developer</string>
+    <string name="dev_subtitle">Transcribe + trim debugger</string>
+    <string name="dev_open">Open developer screen</string>
+    <string name="dev_engine_loading">Loading model…</string>
+    <string name="dev_engine_error">Failed to load model: %1$s</string>
+    <string name="dev_no_capture">Tap the capsule, speak, tap again.</string>
+    <string name="dev_section_waveform">Waveform &amp; trim</string>
+    <string name="dev_section_stats">Stats</string>
+    <string name="dev_section_transcript">Transcript</string>
+    <string name="dev_stats_duration">Duration</string>
+    <string name="dev_stats_after_trim">After silence trim</string>
+    <string name="dev_stats_leading_cut">Leading silence cut</string>
+    <string name="dev_stats_trailing_cut">Trailing silence cut</string>
+    <string name="dev_stats_threshold">RMS threshold</string>
+    <string name="dev_stats_peak">Peak amplitude</string>
+    <string name="dev_stats_rms">Overall RMS</string>
+    <string name="dev_stats_engine_load">Engine load</string>
+    <string name="dev_stats_transcribe">Transcribe</string>
+    <string name="dev_stats_rtf">Real-time factor</string>
+    <string name="dev_stats_threads">Threads</string>
+    <string name="dev_stats_samples">Samples</string>
+    <string name="dev_stats_silence">silence</string>
+    <string name="dev_stats_speech">speech</string>
+    <string name="dev_legend_kept">Kept</string>
+    <string name="dev_legend_trimmed">Trimmed</string>
+    <string name="dev_legend_threshold">Threshold</string>
+
+    <!-- whisper.cpp internal timings -->
+    <string name="dev_section_whisper_timings">whisper.cpp timings</string>
+    <string name="dev_timings_encode">Encode</string>
+    <string name="dev_timings_decode">Decode</string>
+    <string name="dev_timings_sample">Sample</string>
+    <string name="dev_timings_batchd">Batched decode</string>
+    <string name="dev_timings_prompt">Prompt</string>
+    <string name="dev_timings_unavailable">Run a transcription to populate</string>
+
+    <!-- whisper.cpp + device info -->
+    <string name="dev_section_environment">Environment</string>
+    <string name="dev_env_device">Device</string>
+    <string name="dev_env_soc">SoC</string>
+    <string name="dev_env_abi">ABI</string>
+    <string name="dev_env_android">Android</string>
+    <string name="dev_env_whisper">whisper.cpp</string>
+
     <!-- Watch companion session notification (shown on the phone while the
          watch is recording or the phone is transcribing audio from the watch) -->
     <string name="watch_session_channel">Sussurro watch session</string>
@@ -108,4 +153,15 @@
     <string name="settings_watch_a11y_off">Disabled (IME-only injection)</string>
     <string name="settings_watch_last_transcript_label">Last transcript</string>
     <string name="settings_watch_last_transcript_empty">No watch dictation received this session yet.</string>
+
+    <!-- Settings: send a test transcription. Used to debug "no focus" /
+         "enable accessibility" injection failures without needing a paired
+         watch. -->
+    <string name="settings_watch_test_label">Send test transcription</string>
+    <string name="settings_watch_test_desc">Verify the IME / accessibility injection path. Tap, then focus any text field in another app within %1$d seconds.</string>
+    <string name="settings_watch_test_button">Send test</string>
+    <string name="settings_watch_test_countdown">Focus a text field… %1$ds</string>
+    <string name="settings_watch_test_payload">Sussurro test</string>
+    <string name="settings_watch_test_ok">Test injected via %1$s</string>
+    <string name="settings_watch_test_failed">Test failed: %1$s</string>
 </resources>

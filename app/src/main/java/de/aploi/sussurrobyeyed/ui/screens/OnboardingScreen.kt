@@ -26,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.outlined.Lightbulb
@@ -87,6 +89,7 @@ internal fun OnboardingScreen(
     onPermissionResult: (Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     onModelStateChanged: () -> Unit,
+    onOpenDev: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -112,6 +115,21 @@ internal fun OnboardingScreen(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                },
+                actions = {
+                    // Debug-only entry to the developer screen. Caller in
+                    // MainActivity passes a non-null callback only when
+                    // BuildConfig.DEBUG is true. Mirrors the action on
+                    // SettingsScreen so the dev page is always reachable
+                    // regardless of which screen the user is currently on.
+                    if (onOpenDev != null) {
+                        IconButton(onClick = onOpenDev) {
+                            Icon(
+                                imageVector = Icons.Filled.BugReport,
+                                contentDescription = stringResource(R.string.dev_open),
+                            )
+                        }
                     }
                 },
             )

@@ -62,6 +62,50 @@ class WhisperEngine private constructor(
     }
 
     /**
+     * Wall-clock breakdown of the most recent [transcribe] call, in
+     * milliseconds. Useful for debugging where time goes (encoder vs decoder
+     * is the most informative split).
+     *
+     * @property sampleMs sampling logic
+     * @property encodeMs encoder pass — whisper's bulk cost; scales with audio
+     *   length rounded up to 30 s windows.
+     * @property decodeMs decoder pass — scales with output token count.
+     * @property batchdMs batched decode (used by some sampling modes).
+     * @property promptMs prompt processing.
+     */
+    data class Timings(
+        val sampleMs: Float,
+        val encodeMs: Float,
+        val decodeMs: Float,
+        val batchdMs: Float,
+        val promptMs: Float,
+    ) {
+        val totalMs: Float get() = sampleMs + encodeMs + decodeMs + batchdMs + promptMs
+    }
+
+    /**
+     * Read whisper.cpp's per-stage timings from the most recent transcription.
+     * Returns null if no transcription has run, or if the engine is released.
+     */
+    suspend fun lastTimings(): Timings? {
+        if (released) return null
+        return mutex.withLock {
+            withContext(dispatcher) {
+                if (ctxPtr == 0L) return@withContext null
+                val raw = WhisperLib.nativeLastTimings(ctxPtr) ?: return@withContext null
+                if (raw.size < 5) return@withContext null
+                Timings(
+                    sampleMs = raw[0],
+                    encodeMs = raw[1],
+                    decodeMs = raw[2],
+                    batchdMs = raw[3],
+                    promptMs = raw[4],
+                )
+            }
+        }
+    }
+
+    /**
      * Free the underlying whisper.cpp context. After release the engine cannot
      * be used again. Safe to call multiple times.
      */
@@ -93,13 +137,17 @@ class WhisperEngine private constructor(
         /**
          * Load a whisper.cpp model from disk.
          *
+         * @param modelFile the ggml `.bin` to load.
+         * @param nativeLibDir the app's native library directory (from
+         *   `applicationContext.applicationInfo.nativeLibraryDir`). Required
+         *   on arm64-v8a so ggml can dlopen the right CPU backend variant.
          * @throws IllegalStateException if the model file is missing or fails to load.
          */
-        fun load(modelFile: File): WhisperEngine {
+        fun load(modelFile: File, nativeLibDir: String): WhisperEngine {
             check(modelFile.isFile) { "Whisper model not found: ${modelFile.absolutePath}" }
-            val ptr = WhisperLib.nativeInit(modelFile.absolutePath)
+            val ptr = WhisperLib.nativeInit(modelFile.absolutePath, nativeLibDir)
             if (ptr == 0L) {
-                Log.e(TAG, "nativeInit returned 0 for ${modelFile.absolutePath}")
+                Log.e(TAG, "nativeInit returned 0 for ${modelFile.absolutePath} (libDir=$nativeLibDir)")
                 throw IllegalStateException("Failed to load Whisper model")
             }
             return WhisperEngine(ptr)
@@ -108,15 +156,19 @@ class WhisperEngine private constructor(
         /**
          * Reasonable default thread count for whisper.cpp on Android.
          *
-         * Whisper's encoder is the dominant cost and parallelises well up to
-         * the number of physical performance cores. Recent flagship SoCs have
-         * 8 cores (1 prime + 3 perf + 4 efficiency); using 6 leaves room for
-         * the rest of the system while keeping the encoder fast. Older /
-         * budget devices simply use what they have.
+         * The big trap on modern phones is **heterogeneous cores**: a
+         * Snapdragon 8 Gen 2 has 1× Cortex-X3 + 4× Cortex-A715/A710 +
+         * 3× Cortex-A510. The A510 efficiency cores run roughly 3× slower
+         * than the perf cores, so spilling into them with a uniform thread
+         * pool stalls the fast cores waiting for the slow ones. We cap at
+         * 4 to keep ggml's worker threads on the prime + perf cluster
+         * (which is 4 cores wide on most flagships and 3-4 on mid-range).
+         *
+         * Older / budget devices simply use what they have.
          */
         fun defaultThreadCount(): Int {
             val cores = Runtime.getRuntime().availableProcessors()
-            return cores.coerceIn(2, 6)
+            return cores.coerceIn(2, 4)
         }
     }
 }

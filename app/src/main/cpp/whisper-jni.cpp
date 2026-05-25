@@ -11,11 +11,39 @@
 #include <string>
 
 #include "whisper.h"
+#include "ggml-backend.h"
 
 #define TAG "sussurro-whisper"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+// On arm64-v8a we build ggml with GGML_BACKEND_DL, so the CPU backend lives
+// in one of two `libggml-cpu-android_armv*.so` MODULE files alongside our
+// own .so in the app's nativeLibraryDir (e.g.
+// `/data/app/<pkg>-<uid>/lib/arm64-v8a/`). We get the directory passed in
+// from Kotlin (`applicationContext.applicationInfo.nativeLibraryDir`)
+// rather than deriving it from `dladdr`, because `dladdr` on a lib that
+// was loaded directly from inside an APK returns a virtual path like
+// `/.../base.apk!/lib/arm64-v8a/libsussurro-whisper.so` that filesystem
+// APIs can't enumerate.
+//
+// armeabi-v7a uses the statically-linked CPU backend so the dir is unused.
+static void load_best_cpu_backend_once(const char * dir) {
+#ifdef SUSSURRO_USE_BACKEND_DL
+    static bool loaded = false;
+    if (loaded) return;
+    if (dir == nullptr || dir[0] == '\0') {
+        LOGE("nativeLibDir is empty — cannot load ggml CPU backend variants");
+        return;
+    }
+    loaded = true;
+    LOGI("loading ggml CPU backend variants from %s", dir);
+    ggml_backend_load_all_from_path(dir);
+#else
+    (void) dir;
+#endif
+}
 
 // Route whisper.cpp / ggml log output through Android's log so we can debug
 // from logcat. Without this, whisper.cpp prints to stderr which is silently
@@ -42,21 +70,34 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL
 Java_de_aploi_sussurrobyeyed_whisper_WhisperLib_nativeInit(
-    JNIEnv* env, jobject /*thiz*/, jstring modelPath) {
+    JNIEnv* env, jobject /*thiz*/, jstring modelPath, jstring nativeLibDir) {
 
     // Install logging hooks once. Both whisper and ggml have their own setters.
     whisper_log_set(whisper_log_to_android, nullptr);
     ggml_log_set(whisper_log_to_android, nullptr);
+
+    // Load the best CPU backend variant for this device (arm64-v8a only;
+    // a no-op when the backend is statically linked into our .so).
+    const char* libDirChars =
+        (nativeLibDir != nullptr) ? env->GetStringUTFChars(nativeLibDir, nullptr) : nullptr;
+    load_best_cpu_backend_once(libDirChars);
+    if (libDirChars != nullptr) {
+        env->ReleaseStringUTFChars(nativeLibDir, libDirChars);
+    }
 
     const char* path = env->GetStringUTFChars(modelPath, nullptr);
     LOGI("loading model from %s", path);
 
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = false;
-    // Flash attention on whisper.cpp v1.8.4 has produced empty/garbled output
-    // on some ARM CPUs (silently dropping all decoded tokens). Keep it off
-    // until we have a reason to want it back.
-    cparams.flash_attn = false;
+    // Flash attention historically produced empty/garbled output on some ARM
+    // CPUs in v1.8.4 — the most likely root cause was the fp16 ABI mismatch
+    // between whisper.cpp and ggml when -march flags were applied to only
+    // one half of the build. With GGML_BACKEND_DL each ggml-cpu variant is
+    // an independent dlopen-ed module with consistent flags internally, so
+    // there's nothing for our target to clash with. Turn it on for the
+    // ~10-20% attention-layer speedup.
+    cparams.flash_attn = true;
 
     whisper_context* ctx = whisper_init_from_file_with_params(path, cparams);
     env->ReleaseStringUTFChars(modelPath, path);
@@ -177,6 +218,31 @@ Java_de_aploi_sussurrobyeyed_whisper_WhisperLib_nativeSystemInfo(
     JNIEnv* env, jobject /*thiz*/) {
     const char* info = whisper_print_system_info();
     return env->NewStringUTF(info ? info : "");
+}
+
+// Returns [sample_ms, encode_ms, decode_ms, batchd_ms, prompt_ms] for the
+// most recent transcription on `ctxPtr`, or null if unavailable. Used by
+// the dev screen to diagnose where time is being spent.
+JNIEXPORT jfloatArray JNICALL
+Java_de_aploi_sussurrobyeyed_whisper_WhisperLib_nativeLastTimings(
+    JNIEnv* env, jobject /*thiz*/, jlong ctxPtr) {
+
+    if (ctxPtr == 0) return nullptr;
+    auto* ctx = reinterpret_cast<whisper_context*>(ctxPtr);
+    whisper_timings* t = whisper_get_timings(ctx);
+    if (t == nullptr) return nullptr;
+
+    jfloat values[5] = {
+        t->sample_ms,
+        t->encode_ms,
+        t->decode_ms,
+        t->batchd_ms,
+        t->prompt_ms,
+    };
+    jfloatArray out = env->NewFloatArray(5);
+    if (out == nullptr) return nullptr;
+    env->SetFloatArrayRegion(out, 0, 5, values);
+    return out;
 }
 
 } // extern "C"
